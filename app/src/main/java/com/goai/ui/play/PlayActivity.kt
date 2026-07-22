@@ -111,16 +111,16 @@ class PlayActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         val errorMsg = e.message ?: "未知错误"
                         val fullError = buildString {
-                            append("=== 引擎启动失败 ===\n")
+                            append("\n\n=== 引擎启动失败(异常) ===\n")
                             append("异常类型: ").append(e.javaClass.simpleName).append("\n")
                             append("错误信息: ").append(errorMsg).append("\n")
                             append("\n=== 堆栈跟踪 ===\n")
                             append(e.stackTraceToString())
                         }
-                        // 写入错误日志到文件
+                        // 追加到日志文件（不要覆盖之前的诊断日志！）
                         try {
                             val logFile = File(getExternalFilesDir(null), "engine_error.log")
-                            logFile.writeText(fullError)
+                            logFile.appendText(fullError)
                         } catch (_: Exception) {}
                         // 显示可复制的错误对话框
                         showErrorDialog(fullError)

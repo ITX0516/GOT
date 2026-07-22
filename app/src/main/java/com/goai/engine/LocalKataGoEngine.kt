@@ -35,7 +35,7 @@ class LocalKataGoEngine(
         Log.d("KataGoEngine", msg)
     }
 
-    /** 初始化引擎：：先测试二进制，再启动 GTP 模式 */
+    /** 初始化引擎：先诊断二进制，再启动 GTP 模式 */
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
         appendLog("=== 开始初始化 KataGo 引擎 ===")
         appendLog("可执行文件: $executablePath (存在: ${File(executablePath).exists()})")
@@ -43,24 +43,34 @@ class LocalKataGoEngine(
         appendLog("配置文件: $configPath (存在: ${File(configPath).exists()}, 大小: ${File(configPath).length()})")
         appendLog("库目录: $libDir")
 
-        // 第一步：测试 version 命令
+        // 测试1: version 命令
         appendLog("\n--- 测试1: version 命令 ---")
-        try {
-            runAndCapture(listOf("version"))
-        } catch (e: Exception) {
-            appendLog("version 命令失败: ${e.message}")
-        }
+        runAndCapture(listOf("version"))
 
-        // 第二步：测试 help 命令
+        // 测试2: -help 命令
         appendLog("\n--- 测试2: -help 命令 ---")
+        runAndCapture(listOf("-help"))
+
+        // 测试3: 只带 model 不带 config
+        appendLog("\n--- 测试3: gtp 只带model(无config) ---")
         try {
-            runAndCapture(listOf("-help"))
+            val testClient = GTPClient(executablePath, listOf("gtp", "-model", modelPath))
+            testClient.start(libDir)
+            Thread.sleep(2000)
+            if (testClient.isRunning) {
+                appendLog("无config启动成功！进程仍在运行")
+                testClient.close()
+            } else {
+                appendLog("无config也退出了，退出码: ${testClient.exitValue}")
+                appendLog("STDERR: ${testClient.lastError}")
+                testClient.close()
+            }
         } catch (e: Exception) {
-            appendLog("-help 命令失败: ${e.message}")
+            appendLog("无config启动异常: ${e.message}")
         }
 
-        // 第三步：正常启动 GTP 模式
-        appendLog("\n--- 启动 GTP 模式 ---")
+        // 测试4: 带model和config的完整启动
+        appendLog("\n--- 测试4: 完整GTP启动 (model + config) ---")
         return try {
             gtpClient = GTPClient(
                 executablePath,
@@ -77,33 +87,46 @@ class LocalKataGoEngine(
             val stderr = gtpClient?.lastError ?: ""
             val exitCode = gtpClient?.exitValue
             appendLog("GTP 启动失败，退出码: $exitCode")
-            appendLog("异常: ${e.message}")
-            if (stderr.isNotEmpty()) {
-                appendLog("STDERR: $stderr")
-            }
+            appendLog("异常消息: ${e.message}")
+            appendLog("STDERR: $stderr")
             throw Exception("${e.message}\nSTDERR: $stderr")
         }
     }
 
-    /** 运行命令并捕获输出，写到日志里 */
+    /** 运行命令并捕获所有输出，写到日志里 */
     private suspend fun runAndCapture(args: List<String>) {
         val client = GTPClient(executablePath, args)
+        var startException: Exception? = null
         try {
             client.start(libDir)
+            // 如果 start 成功（进程没退出），等待2秒看是否有输出
             Thread.sleep(2000)
+            if (client.isRunning) {
+                appendLog("进程仍在运行，读取已有输出...")
+                appendLog("STDERR: ${client.lastError}")
+            }
         } catch (e: Exception) {
-            // 命令执行完会抛异常（因为进程退出了），这是正常的
-        } finally {
-            val exitCode = client.exitValue
-            val stdout = try {
-                client.readAllStdout()
-            } catch (_: Exception) { "" }
-            val stderr = client.lastError
-            appendLog("退出码: $exitCode")
-            appendLog("=== STDOUT ===\n$stdout")
-            appendLog("=== STDERR ===\n$stderr")
-            client.close()
+            // start 方法在进程退出时会抛异常，异常消息里包含 stdout 和 stderr
+            startException = e
         }
+
+        val exitCode = client.exitValue
+        val stderr = client.lastError
+
+        // 异常消息里包含了 start 方法读取的 stdout 和 stderr
+        val exceptionOutput = startException?.message ?: ""
+
+        // 尝试再读取剩余的 stdout
+        val remainingStdout = try {
+            client.readAllStdout()
+        } catch (_: Exception) { "" }
+
+        appendLog("退出码: $exitCode")
+        appendLog("=== 异常消息(含输出) ===\n$exceptionOutput")
+        appendLog("=== 剩余STDOUT ===\n$remainingStdout")
+        appendLog("=== STDERR缓冲 ===\n$stderr")
+
+        client.close()
     }
 
     /** 生成一步棋，返回 GTP 坐标（如 "D17" 或 "pass"） */
