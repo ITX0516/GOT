@@ -16,11 +16,11 @@ object AssetExtractor {
             targetDir.mkdirs()
         }
 
-        val modelFile = File(targetDir, "model.tflite")
-        val configFile = File(targetDir, "gtp.cfg")
+        val modelFile = File(targetDir, "10b.bin.gz")
+        val configFile = File(targetDir, "gtp_static.cfg")
 
-        copyAssetIfNewer(context, "katago/model.tflite", modelFile)
-        copyAssetIfNewer(context, "katago/gtp.cfg", configFile)
+        copyAssetIfNewer(context, "katago/10b.bin.gz", modelFile)
+        copyAssetIfNewer(context, "katago/gtp_static.cfg", configFile)
 
         val execFile = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
 
