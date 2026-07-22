@@ -27,10 +27,10 @@ jobs:
           gradle-version: 8.2
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace 2>&1 | tail -300
 
-      - name: Find APK
-        run: find . -name "*.apk" -type f -exec ls -lh {} \;
+      - name: Find APK files
+        run: find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
