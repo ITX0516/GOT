@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主题色 -->
+    <color name="go_primary">#D4A04C</color>
+    <color name="go_primary_dark">#B8862E</color>
+    <color name="go_secondary">#4A6741</color>
+    <color name="go_background">#F5F0E8</color>
+    <color name="go_surface">#FFFFFF</color>
+    <color name="go_on_primary">#1A1A1A</color>
+    <color name="go_error">#D32F2F</color>
+
+    <!-- 棋盘颜色（参考腾讯围棋木色风格） -->
+    <color name="board_bg">#DCB35C</color>
+    <color name="board_line">#3D2B1F</color>
+    <color name="board_star_point">#3D2B1F</color>
+    <color name="board_coordinate">#8B7355</color>
+
+    <!-- 棋子颜色 -->
+    <color name="stone_black">#1A1A1A</color>
+    <color name="stone_black_highlight">#4A4A4A</color>
+    <color name="stone_white">#FAFAFA</color>
+    <color name="stone_white_shadow">#D0D0D0</color>
+
+    <!-- AI 分析标记 -->
+    <color name="ai_best">#4CAF50</color>
+    <color name="ai_candidate">#2196F3</color>
+    <color name="ai_winrate_bar_black">#1A1A1A</color>
+    <color name="ai_winrate_bar_white">#FAFAFA</color>
+</resources>

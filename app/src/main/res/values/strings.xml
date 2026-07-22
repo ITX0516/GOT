@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GoAI</string>
+    <string name="play_game">人机对弈</string>
+    <string name="settings">设置</string>
+    <string name="engine_local">本地引擎</string>
+    <string name="engine_cloud">云端引擎</string>
+    <string name="engine_none">无引擎</string>
+    <string name="llm_explain">AI 讲解</string>
+    <string name="hint_show">显示提示</string>
+    <string name="undo">悔棋</string>
+    <string name="pass">停一手</string>
+    <string name="resign">认输</string>
+    <string name="new_game">新对局</string>
+    <string name="black">黑棋</string>
+    <string name="white">白棋</string>
+    <string name="your_turn">轮到你了</string>
+    <string name="ai_thinking">AI 思考中…</string>
+    <string name="ai_unavailable">AI 分析暂不可用</string>
+    <string name="settings_engine">引擎设置</string>
+    <string name="settings_llm">AI 讲解设置</string>
+    <string name="settings_llm_provider">LLM 服务商</string>
+    <string name="settings_llm_key">API Key</string>
+    <string name="settings_llm_model">模型名称</string>
+    <string name="settings_llm_url">API 地址</string>
+    <string name="settings_board_size">棋盘大小</string>
+    <string name="settings_handicap">让子</string>
+    <string name="settings_komi">贴目</string>
+    <string name="win_rate">胜率</string>
+    <string name="best_move">推荐选点</string>
+    <string name="score_lead">目差</string>
+    <string name="candidates">候选走法</string>
+    <string name="visits">访问次数</string>
+</resources>
