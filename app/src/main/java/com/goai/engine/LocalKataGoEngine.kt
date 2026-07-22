@@ -10,6 +10,9 @@ import java.io.File
 /**
  * 本地 KataGo 引擎
  * 通过 [GTPClient] 与 katago 可执行文件通信，实现 [GoEngine] 接口
+ *
+ * 重要：BadukAI 的 KataGo 使用 __android_log_print 输出日志到 logcat，
+ * 而不是 stdout/stderr。因此需要在启动前后捕获 logcat 来获取错误信息。
  */
 class LocalKataGoEngine(
     private val executablePath: String,
@@ -21,10 +24,8 @@ class LocalKataGoEngine(
 
     override val name: String = "KataGo"
 
-    /** GTP 客户端：以 gtp 模式启动 katago */
     private var gtpClient: GTPClient? = null
 
-    /** 引擎是否就绪：GTPClient 已启动且子进程存活 */
     override val isReady: Boolean
         get() = gtpClient?.isRunning == true
 
@@ -35,7 +36,65 @@ class LocalKataGoEngine(
         Log.d("KataGoEngine", msg)
     }
 
-    /** 初始化引擎：先诊断二进制，再启动 GTP 模式 */
+    /** 清空 logcat 缓冲区 */
+    private fun clearLogcat() {
+        try {
+            val pb = ProcessBuilder("logcat", "-c")
+            pb.redirectErrorStream(true)
+            val p = pb.start()
+            p.waitFor()
+        } catch (_: Exception) {}
+    }
+
+    /** 读取 logcat 输出（dump 模式） */
+    private fun dumpLogcat(): String {
+        return try {
+            val pb = ProcessBuilder("logcat", "-d")
+            pb.redirectErrorStream(true)
+            val p = pb.start()
+            val output = p.inputStream.bufferedReader().readText()
+            p.waitFor()
+            // 过滤出与 KataGo 相关的日志行
+            output.split("\n").filter { line ->
+                line.contains("KataGo", true) ||
+                line.contains("katago", true) ||
+                line.contains("tflite", true) ||
+                line.contains("TfLite", true) ||
+                line.contains("QNN", true) ||
+                line.contains("qnn", true) ||
+                line.contains("NPU", true) ||
+                line.contains("nnapi", true) ||
+                line.contains("NNAPI", true) ||
+                line.contains("model", true) ||
+                line.contains("config", true) ||
+                line.contains("error", true) ||
+                line.contains("Error", true) ||
+                line.contains("ERROR", true) ||
+                line.contains("FATAL", true) ||
+                line.contains("fail", true) ||
+                line.contains("Fail", true) ||
+                line.contains("FAIL", true) ||
+                line.contains("backend", true) ||
+                line.contains("Backend", true) ||
+                line.contains("GTP", true) ||
+                line.contains("libkatago", true) ||
+                line.contains("Exception", true) ||
+                line.contains("abort", true) ||
+                line.contains("cannot", true) ||
+                line.contains("Cannot", true) ||
+                line.contains("Could not", true) ||
+                line.contains("WARNING", true) ||
+                line.contains("unused", true) ||
+                line.contains("Unknown", true) ||
+                line.contains("invalid", true) ||
+                line.contains("Invalid", true)
+            }.joinToString("\n")
+        } catch (e: Exception) {
+            "读取logcat失败: ${e.message}"
+        }
+    }
+
+    /** 初始化引擎 */
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
         appendLog("=== 开始初始化 KataGo 引擎 ===")
         appendLog("可执行文件: $executablePath (存在: ${File(executablePath).exists()})")
@@ -43,34 +102,30 @@ class LocalKataGoEngine(
         appendLog("配置文件: $configPath (存在: ${File(configPath).exists()}, 大小: ${File(configPath).length()})")
         appendLog("库目录: $libDir")
 
-        // 测试1: version 命令
-        appendLog("\n--- 测试1: version 命令 ---")
-        runAndCapture(listOf("version"))
-
-        // 测试2: -help 命令
-        appendLog("\n--- 测试2: -help 命令 ---")
-        runAndCapture(listOf("-help"))
-
-        // 测试3: 只带 model 不带 config
-        appendLog("\n--- 测试3: gtp 只带model(无config) ---")
-        try {
-            val testClient = GTPClient(executablePath, listOf("gtp", "-model", modelPath))
-            testClient.start(libDir)
-            Thread.sleep(2000)
-            if (testClient.isRunning) {
-                appendLog("无config启动成功！进程仍在运行")
-                testClient.close()
-            } else {
-                appendLog("无config也退出了，退出码: ${testClient.exitValue}")
-                appendLog("STDERR: ${testClient.lastError}")
-                testClient.close()
+        // 列出库目录中的所有文件
+        libDir?.let {
+            val libDirFile = File(it)
+            if (libDirFile.exists() && libDirFile.isDirectory) {
+                appendLog("库目录文件列表:")
+                libDirFile.listFiles()?.forEach { f ->
+                    appendLog("  ${f.name} (${f.length()} bytes)")
+                }
             }
-        } catch (e: Exception) {
-            appendLog("无config启动异常: ${e.message}")
         }
 
-        // 测试4: 带model和config的完整启动
-        appendLog("\n--- 测试4: 完整GTP启动 (model + config) ---")
+        // 测试1: version 命令（捕获 logcat）
+        appendLog("\n--- 测试1: version 命令 ---")
+        clearLogcat()
+        runAndCaptureWithLogcat(listOf("version"))
+
+        // 测试2: -help 命令（捕获 logcat）
+        appendLog("\n--- 测试2: -help 命令 ---")
+        clearLogcat()
+        runAndCaptureWithLogcat(listOf("-help"))
+
+        // 测试3: 完整 GTP 启动
+        appendLog("\n--- 测试3: 完整GTP启动 (model + config) ---")
+        clearLogcat()
         return try {
             gtpClient = GTPClient(
                 executablePath,
@@ -89,47 +144,52 @@ class LocalKataGoEngine(
             appendLog("GTP 启动失败，退出码: $exitCode")
             appendLog("异常消息: ${e.message}")
             appendLog("STDERR: $stderr")
-            throw Exception("${e.message}\nSTDERR: $stderr")
+
+            // 捕获 logcat 输出
+            val logcatOutput = dumpLogcat()
+            appendLog("\n=== LOGCAT 输出 ===")
+            appendLog(logcatOutput)
+            appendLog("=== LOGCAT 结束 ===\n")
+
+            throw Exception("${e.message}\nSTDERR: $stderr\n\nLOGCAT:\n$logcatOutput")
         }
     }
 
-    /** 运行命令并捕获所有输出，写到日志里 */
-    private suspend fun runAndCapture(args: List<String>) {
+    /** 运行命令并捕获 stdout/stderr 和 logcat */
+    private suspend fun runAndCaptureWithLogcat(args: List<String>) {
         val client = GTPClient(executablePath, args)
         var startException: Exception? = null
         try {
             client.start(libDir)
-            // 如果 start 成功（进程没退出），等待2秒看是否有输出
             Thread.sleep(2000)
             if (client.isRunning) {
-                appendLog("进程仍在运行，读取已有输出...")
-                appendLog("STDERR: ${client.lastError}")
+                appendLog("进程仍在运行")
             }
         } catch (e: Exception) {
-            // start 方法在进程退出时会抛异常，异常消息里包含 stdout 和 stderr
             startException = e
         }
 
         val exitCode = client.exitValue
         val stderr = client.lastError
-
-        // 异常消息里包含了 start 方法读取的 stdout 和 stderr
         val exceptionOutput = startException?.message ?: ""
-
-        // 尝试再读取剩余的 stdout
         val remainingStdout = try {
             client.readAllStdout()
         } catch (_: Exception) { "" }
 
         appendLog("退出码: $exitCode")
-        appendLog("=== 异常消息(含输出) ===\n$exceptionOutput")
+        appendLog("=== 异常消息(含stdout/stderr) ===\n$exceptionOutput")
         appendLog("=== 剩余STDOUT ===\n$remainingStdout")
         appendLog("=== STDERR缓冲 ===\n$stderr")
+
+        // 捕获 logcat
+        val logcatOutput = dumpLogcat()
+        appendLog("=== LOGCAT 输出 ===")
+        appendLog(logcatOutput)
+        appendLog("=== LOGCAT 结束 ===")
 
         client.close()
     }
 
-    /** 生成一步棋，返回 GTP 坐标（如 "D17" 或 "pass"） */
     override suspend fun genMove(color: Stone, gameState: GameState): String {
         val c = when (color) {
             Stone.BLACK -> "b"
@@ -139,7 +199,6 @@ class LocalKataGoEngine(
         return gtpClient!!.sendCommand("genmove $c").trim()
     }
 
-    /** 分析当前局面，返回分析数据；引擎不支持分析时返回 null */
     override suspend fun analyze(gameState: GameState): AnalysisData? {
         val line = try {
             gtpClient!!.sendAnalyze("kata-analyze interval100")
@@ -157,19 +216,12 @@ class LocalKataGoEngine(
         return parseAnalyzeLine(line)
     }
 
-    /** 释放资源 */
     override fun close() {
         gtpClient?.close()
     }
 
-    /**
-     * 解析 kata-analyze / lz-analyze 的 info 行
-     * 格式：info move D17 visits 7 winrate 52.95 scoreLead -0.08 pv D17 Q16 ...
-     * 一行可能包含多个 info 段（以 " info " 分隔），每个段对应一个候选走法
-     */
     private fun parseAnalyzeLine(line: String): AnalysisData? {
         val candidates = mutableListOf<CandidateMove>()
-        // 按 " info " 切分出各候选信息段，并补回前缀
         val segments = line.split(" info ").mapIndexed { index, segment ->
             if (index == 0) segment else "info $segment"
         }
@@ -189,17 +241,15 @@ class LocalKataGoEngine(
                     "winrate" -> winrate = value.toFloatOrNull() ?: 0f
                     "scoreLead" -> scoreLead = value.toFloatOrNull() ?: 0f
                     "visits" -> visits = value.toIntOrNull() ?: 0
-                    "pv" -> break  // pv 之后是着法序列，停止解析本段
+                    "pv" -> break
                 }
                 i += 2
             }
             if (move.isNotEmpty()) {
-                // winrate 输出范围为 0~100，转换为 0~1
                 candidates.add(CandidateMove(move, winrate / 100f, scoreLead, visits))
             }
         }
         if (candidates.isEmpty()) return null
-        // 第一个候选为最佳走法
         val best = candidates.first()
         return AnalysisData(
             winrate = best.winrate,
