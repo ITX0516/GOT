@@ -16,7 +16,7 @@ object AssetExtractor {
             targetDir.mkdirs()
         }
 
-        val modelFile = File(targetDir, "model.bin")
+        val modelFile = File(targetDir, "model.bin.gz")
         val configFile = File(targetDir, "gtp.cfg")
 
         copyAssetIfNewer(context, "katago/model.bin", modelFile)
