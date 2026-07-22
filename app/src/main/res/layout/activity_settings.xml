@@ -12,8 +12,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="@color/go_primary"
         app:title="@string/settings"
-        app:titleTextColor="@color/go_on_primary"
-        app:navigationIcon="@android:drawable/ic_media_previous" />
+        app:titleTextColor="@color/go_on_primary" />
 
     <ScrollView
         android:layout_width="match_parent"

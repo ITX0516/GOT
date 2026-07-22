@@ -28,7 +28,6 @@
             android:layout_height="64dp"
             android:text="@string/play_game"
             android:textSize="18sp"
-            app:icon="@android:drawable/ic_menu_play_clip"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
         <com.google.android.material.button.MaterialButton
@@ -39,7 +38,6 @@
             android:text="@string/settings"
             android:textSize="18sp"
             style="@style/Widget.Material3.Button.OutlinedButton"
-            app:icon="@android:drawable/ic_menu_preferences"
             xmlns:app="http://schemas.android.com/apk/res-auto" />
 
     </LinearLayout>
