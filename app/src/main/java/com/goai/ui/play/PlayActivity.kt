@@ -82,6 +82,23 @@ class PlayActivity : AppCompatActivity() {
                     try {
                         val paths = AssetExtractor.extractKataGoAssets(this@PlayActivity)
                         val libDir = applicationInfo.nativeLibraryDir
+
+                        // 收集调试信息
+                        val debugInfo = buildString {
+                            append("=== 引擎启动调试信息 ===\n")
+                            append("可执行文件: ").append(paths.executablePath)
+                            append(" (存在: ").append(File(paths.executablePath).exists()).append(")\n")
+                            append("模型文件: ").append(paths.modelPath)
+                            append(" (存在: ").append(File(paths.modelPath).exists())
+                            append(", 大小: ").append(File(paths.modelPath).length()).append(")\n")
+                            append("配置文件: ").append(paths.configPath)
+                            append(" (存在: ").append(File(paths.configPath).exists())
+                            append(", 大小: ").append(File(paths.configPath).length()).append(")\n")
+                            append("库目录: ").append(libDir).append("\n")
+                            append("启动命令: katago gtp -model <model> -config <config>\n")
+                            append("======================\n\n")
+                        }
+
                         engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath, libDir)
                         val ok = engine!!.init(gameState.boardSize, gameState.komi)
                         if (!ok) {
@@ -90,14 +107,20 @@ class PlayActivity : AppCompatActivity() {
                         }
                     } catch (e: Exception) {
                         val errorMsg = e.message ?: "未知错误"
+                        val fullError = buildString {
+                            append("=== 引擎启动失败 ===\n")
+                            append("异常类型: ").append(e.javaClass.simpleName).append("\n")
+                            append("错误信息: ").append(errorMsg).append("\n")
+                            append("\n=== 堆栈跟踪 ===\n")
+                            append(e.stackTraceToString())
+                        }
                         // 写入错误日志到文件
                         try {
                             val logFile = File(getExternalFilesDir(null), "engine_error.log")
-                            logFile.writeText("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n$errorMsg\n")
+                            logFile.writeText(fullError)
                         } catch (_: Exception) {}
-                        // 截取前 200 字符显示
-                        val shortMsg = if (errorMsg.length > 200) errorMsg.substring(0, 200) + "..." else errorMsg
-                        showToast("引擎启动失败：$shortMsg")
+                        // 显示可复制的错误对话框
+                        showErrorDialog(fullError)
                         engine = null
                     } finally {
                         binding.progressBar.visibility = View.GONE
@@ -108,6 +131,31 @@ class PlayActivity : AppCompatActivity() {
                 showToast("云端引擎尚未配置")
             }
         }
+    }
+
+    /** 显示错误对话框，支持复制文本 */
+    private fun showErrorDialog(message: String) {
+        val scrollView = android.widget.ScrollView(this)
+        val textView = android.widget.TextView(this).apply {
+            text = message
+            textSize = 12f
+            setPadding(48, 24, 48, 24)
+            setTextIsSelectable(true)
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+        scrollView.addView(textView)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("引擎启动失败")
+            .setView(scrollView)
+            .setPositiveButton("复制到剪贴板") { _, _ ->
+                val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+                val clip = android.content.ClipData.newPlainText("engine_error", message)
+                clipboard.setPrimaryClip(clip)
+                showToast("已复制到剪贴板")
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     /** 初始化 LLM */

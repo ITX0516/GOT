@@ -31,6 +31,8 @@ class GTPClient(
     private var errorReader: BufferedReader? = null
     /** stderr 收集的错误信息 */
     private val errorBuffer = StringBuilder()
+    /** 启动命令 */
+    private var commandStr: String = ""
 
     /** 引擎子进程是否在运行 */
     val isRunning: Boolean
@@ -51,7 +53,8 @@ class GTPClient(
     /** 启动子进程 */
     suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
-        Log.d(TAG, "Starting process: ${command.joinToString(" ")}")
+        commandStr = command.joinToString(" ")
+        Log.d(TAG, "Starting process: $commandStr")
         val processBuilder = ProcessBuilder(command)
         processBuilder.redirectErrorStream(false)
         if (libDir != null) {
@@ -69,6 +72,7 @@ class GTPClient(
         reader = BufferedReader(InputStreamReader(process!!.inputStream, Charsets.UTF_8))
         errorReader = BufferedReader(InputStreamReader(process!!.errorStream, Charsets.UTF_8))
 
+        // stderr 收集线程
         Thread {
             try {
                 var line: String?
@@ -88,9 +92,9 @@ class GTPClient(
             start()
         }
 
-        // 等待 1 秒，检查进程是否异常退出
+        // 等待 1.5 秒，检查进程是否异常退出
         try {
-            Thread.sleep(1000)
+            Thread.sleep(1500)
         } catch (_: InterruptedException) {
         }
         val exit = try {
@@ -99,9 +103,39 @@ class GTPClient(
             null
         }
         if (exit != null) {
-            Thread.sleep(200)
+            Thread.sleep(300)
             val stderr = synchronized(errorBuffer) { errorBuffer.toString() }
-            throw IOException("引擎进程异常退出，退出码：$exit\nSTDERR: $stderr")
+            // 读取所有可用的 stdout
+            val stdoutBuilder = StringBuilder()
+            try {
+                while (reader!!.ready()) {
+                    val line = reader!!.readLine()
+                    if (line != null) {
+                        stdoutBuilder.append(line).append("\n")
+                    } else {
+                        break
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            // 如果 ready() 没读到，尝试直接读
+            if (stdoutBuilder.isEmpty()) {
+                try {
+                    val chars = CharArray(4096)
+                    val n = reader!!.read(chars)
+                    if (n > 0) {
+                        stdoutBuilder.append(chars, 0, n)
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            val stdout = stdoutBuilder.toString()
+            throw IOException(
+                "引擎进程已退出，退出码：$exit\n\n" +
+                "启动命令：$commandStr\n\n" +
+                "=== STDOUT ===\n$stdout\n\n" +
+                "=== STDERR ===\n$stderr"
+            )
         }
         Log.d(TAG, "Process started successfully")
     }
