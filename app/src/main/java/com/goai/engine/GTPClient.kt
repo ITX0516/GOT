@@ -50,14 +50,6 @@ class GTPClient(
     val lastError: String
         get() = errorBuffer.toString()
 
-    /** 获取子进程退出码（如果已退出），未退出返回 null */
-    val exitValue: Int?
-        get() = try {
-            process?.exitValue()
-        } catch (_: IllegalThreadStateException) {
-            null
-        }
-
     /** 启动子进程 */
     suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
