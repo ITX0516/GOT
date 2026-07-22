@@ -19,7 +19,7 @@ object AssetExtractor {
         val modelFile = File(targetDir, "10b.bin.gz")
         val configFile = File(targetDir, "gtp_static.cfg")
 
-        copyAssetIfNewer(context, "katago/10b.bin.gz", modelFile)
+        copyAssetIfNewer(context, "katago/10b.bin", modelFile)
         copyAssetIfNewer(context, "katago/gtp_static.cfg", configFile)
 
         val execFile = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
