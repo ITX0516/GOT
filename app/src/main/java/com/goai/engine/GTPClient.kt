@@ -41,11 +41,21 @@ class GTPClient(
         get() = errorBuffer.toString()
 
     /** 启动子进程 */
-    suspend fun start(): Unit = withContext(Dispatchers.IO) {
+    suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
         Log.d(TAG, "Starting process: ${command.joinToString(" ")}")
         val processBuilder = ProcessBuilder(command)
         processBuilder.redirectErrorStream(false)
+        if (libDir != null) {
+            val env = processBuilder.environment()
+            val currentLdPath = env["LD_LIBRARY_PATH"]
+            env["LD_LIBRARY_PATH"] = if (currentLdPath.isNullOrEmpty()) {
+                libDir
+            } else {
+                "$libDir:$currentLdPath"
+            }
+            Log.d(TAG, "LD_LIBRARY_PATH=${env["LD_LIBRARY_PATH"]}")
+        }
         process = processBuilder.start()
         writer = OutputStreamWriter(process!!.outputStream, Charsets.UTF_8)
         reader = BufferedReader(InputStreamReader(process!!.inputStream, Charsets.UTF_8))

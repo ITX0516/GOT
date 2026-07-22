@@ -80,7 +80,8 @@ class PlayActivity : AppCompatActivity() {
                     binding.progressBar.visibility = View.VISIBLE
                     try {
                         val paths = AssetExtractor.extractKataGoAssets(this@PlayActivity)
-                        engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath)
+                        val libDir = applicationInfo.nativeLibraryDir
+                        engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath, libDir)
                         val ok = engine!!.init(gameState.boardSize, gameState.komi)
                         if (!ok) {
                             showToast("本地引擎初始化失败")

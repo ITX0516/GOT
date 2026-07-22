@@ -41,6 +41,12 @@ android {
                 keyPassword = keyPasswordStr ?: ""
             }
         }
+        create("fixed") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -52,18 +58,16 @@ android {
                 "proguard-rules.pro"
             )
             val releaseSigning = signingConfigs.getByName("release")
-            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
-                signingConfig = releaseSigning
+            signingConfig = if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                releaseSigning
+            } else {
+                signingConfigs.getByName("fixed")
             }
         }
         debug {
             isMinifyEnabled = false
             isShrinkResources = false
-            // 统一签名：有 release keystore 时 debug 也用它，保证每次构建签名一致
-            val releaseSigning = signingConfigs.getByName("release")
-            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
-                signingConfig = releaseSigning
-            }
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 

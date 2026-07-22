@@ -12,7 +12,8 @@ import com.goai.model.Stone
 class LocalKataGoEngine(
     private val executablePath: String,
     private val modelPath: String,
-    private val configPath: String
+    private val configPath: String,
+    private val libDir: String? = null
 ) : GoEngine {
 
     override val name: String = "KataGo"
@@ -30,7 +31,7 @@ class LocalKataGoEngine(
     /** 初始化引擎：启动子进程并设置棋盘参数 */
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
         return try {
-            gtpClient.start()
+            gtpClient.start(libDir)
             gtpClient.sendCommand("boardsize $boardSize")
             gtpClient.sendCommand("komi $komi")
             gtpClient.sendCommand("time_settings 0 1 0")
