@@ -25,6 +25,7 @@ import com.goai.ui.board.GoBoardView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class PlayActivity : AppCompatActivity() {
 
@@ -88,7 +89,15 @@ class PlayActivity : AppCompatActivity() {
                             engine = null
                         }
                     } catch (e: Exception) {
-                        showToast("引擎启动失败：${e.message}")
+                        val errorMsg = e.message ?: "未知错误"
+                        // 写入错误日志到文件
+                        try {
+                            val logFile = File(getExternalFilesDir(null), "engine_error.log")
+                            logFile.writeText("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n$errorMsg\n")
+                        } catch (_: Exception) {}
+                        // 截取前 200 字符显示
+                        val shortMsg = if (errorMsg.length > 200) errorMsg.substring(0, 200) + "..." else errorMsg
+                        showToast("引擎启动失败：$shortMsg")
                         engine = null
                     } finally {
                         binding.progressBar.visibility = View.GONE
