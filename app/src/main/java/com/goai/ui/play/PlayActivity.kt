@@ -99,7 +99,10 @@ class PlayActivity : AppCompatActivity() {
                             append("======================\n\n")
                         }
 
-                        engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath, libDir)
+                        val logFile = File(getExternalFilesDir(null), "engine_error.log")
+                        // 清空日志文件
+                        try { logFile.writeText("") } catch (_: Exception) {}
+                        engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath, libDir, logFile)
                         val ok = engine!!.init(gameState.boardSize, gameState.komi)
                         if (!ok) {
                             showToast("本地引擎初始化失败")

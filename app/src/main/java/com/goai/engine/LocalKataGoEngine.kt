@@ -5,6 +5,7 @@ import com.goai.model.AnalysisData
 import com.goai.model.CandidateMove
 import com.goai.model.GameState
 import com.goai.model.Stone
+import java.io.File
 
 /**
  * 本地 KataGo 引擎
@@ -14,7 +15,8 @@ class LocalKataGoEngine(
     private val executablePath: String,
     private val modelPath: String,
     private val configPath: String,
-    private val libDir: String? = null
+    private val libDir: String? = null,
+    private val logFile: File? = null
 ) : GoEngine {
 
     override val name: String = "KataGo"
@@ -26,52 +28,81 @@ class LocalKataGoEngine(
     override val isReady: Boolean
         get() = gtpClient?.isRunning == true
 
+    private fun appendLog(msg: String) {
+        try {
+            logFile?.appendText(msg + "\n")
+        } catch (_: Exception) {}
+        Log.d("KataGoEngine", msg)
+    }
+
     /** 初始化引擎：：先测试二进制，再启动 GTP 模式 */
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
-        // 第一步：用 -help 测试二进制是否能执行
+        appendLog("=== 开始初始化 KataGo 引擎 ===")
+        appendLog("可执行文件: $executablePath (存在: ${File(executablePath).exists()})")
+        appendLog("模型文件: $modelPath (存在: ${File(modelPath).exists()}, 大小: ${File(modelPath).length()})")
+        appendLog("配置文件: $configPath (存在: ${File(configPath).exists()}, 大小: ${File(configPath).length()})")
+        appendLog("库目录: $libDir")
+
+        // 第一步：测试 version 命令
+        appendLog("\n--- 测试1: version 命令 ---")
         try {
-            testBinary()
+            runAndCapture(listOf("version"))
         } catch (e: Exception) {
-            throw Exception("二进制执行测试失败：${e.message}")
+            appendLog("version 命令失败: ${e.message}")
         }
 
-        // 第二步：正常启动 GTP 模式
+        // 第二步：测试 help 命令
+        appendLog("\n--- 测试2: -help 命令 ---")
+        try {
+            runAndCapture(listOf("-help"))
+        } catch (e: Exception) {
+            appendLog("-help 命令失败: ${e.message}")
+        }
+
+        // 第三步：正常启动 GTP 模式
+        appendLog("\n--- 启动 GTP 模式 ---")
         return try {
             gtpClient = GTPClient(
                 executablePath,
                 listOf("gtp", "-model", modelPath, "-config", configPath)
             )
             gtpClient!!.start(libDir)
+            appendLog("GTP 模式启动成功，发送初始化命令...")
             gtpClient!!.sendCommand("boardsize $boardSize")
             gtpClient!!.sendCommand("komi $komi")
             gtpClient!!.sendCommand("time_settings 0 1 0")
+            appendLog("初始化完成")
             true
         } catch (e: Exception) {
             val stderr = gtpClient?.lastError ?: ""
+            val exitCode = gtpClient?.exitValue
+            appendLog("GTP 启动失败，退出码: $exitCode")
+            appendLog("异常: ${e.message}")
             if (stderr.isNotEmpty()) {
-                throw Exception("${e.message}\nSTDERR: $stderr")
+                appendLog("STDERR: $stderr")
             }
-            throw e
+            throw Exception("${e.message}\nSTDERR: $stderr")
         }
     }
 
-    /** 测试二进制是否能正常执行 */
-    private suspend fun testBinary() {
-        val testClient = GTPClient(executablePath, listOf("-help"))
+    /** 运行命令并捕获输出，写到日志里 */
+    private suspend fun runAndCapture(args: List<String>) {
+        val client = GTPClient(executablePath, args)
         try {
-            testClient.start(libDir)
-            // 等待进程结束并读取输出
-            Thread.sleep(1000)
-            Log.d("KataGoTest", "Binary test completed, exit code: ${testClient.exitValue}")
+            client.start(libDir)
+            Thread.sleep(2000)
         } catch (e: Exception) {
-            // 退出码 0 是正常的（help 命令执行完就退出）
-            val exitCode = testClient.exitValue
-            if (exitCode == null || exitCode != 0) {
-                throw Exception("帮助命令执行失败，退出码：$exitCode\n${e.message}")
-            }
-            Log.d("KataGoTest", "Binary test passed, exit code: $exitCode")
+            // 命令执行完会抛异常（因为进程退出了），这是正常的
         } finally {
-            testClient.close()
+            val exitCode = client.exitValue
+            val stdout = try {
+                client.readAllStdout()
+            } catch (_: Exception) { "" }
+            val stderr = client.lastError
+            appendLog("退出码: $exitCode")
+            appendLog("=== STDOUT ===\n$stdout")
+            appendLog("=== STDERR ===\n$stderr")
+            client.close()
         }
     }
 

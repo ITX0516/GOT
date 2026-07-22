@@ -50,6 +50,22 @@ class GTPClient(
     val lastError: String
         get() = errorBuffer.toString()
 
+    /** 读取所有可用的 stdout 输出（进程退出后调用） */
+    fun readAllStdout(): String {
+        val r = reader ?: return ""
+        val builder = StringBuilder()
+        try {
+            var line: String?
+            while (true) {
+                line = r.readLine()
+                if (line == null) break
+                builder.append(line).append("\n")
+            }
+        } catch (_: Exception) {
+        }
+        return builder.toString()
+    }
+
     /** 启动子进程 */
     suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
