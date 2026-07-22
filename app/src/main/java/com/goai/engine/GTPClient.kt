@@ -103,7 +103,7 @@ class GTPClient(
             val stderr = synchronized(errorBuffer) { errorBuffer.toString() }
             throw IOException("引擎进程异常退出，退出码：$exit\nSTDERR: $stderr")
         }
-        Log.d(TAG, "Process started successfully, pid = ${process?.pid()}")
+        Log.d(TAG, "Process started successfully")
     }
 
     /**
