@@ -40,6 +40,14 @@ class GTPClient(
     val lastError: String
         get() = errorBuffer.toString()
 
+    /** 获取子进程退出码（如果已退出），未退出返回 null */
+    val exitValue: Int?
+        get() = try {
+            process?.exitValue()
+        } catch (_: IllegalThreadStateException) {
+            null
+        }
+
     /** 启动子进程 */
     suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
@@ -79,6 +87,23 @@ class GTPClient(
             isDaemon = true
             start()
         }
+
+        // 等待 1 秒，检查进程是否异常退出
+        try {
+            Thread.sleep(1000)
+        } catch (_: InterruptedException) {
+        }
+        val exit = try {
+            process?.exitValue()
+        } catch (_: IllegalThreadStateException) {
+            null
+        }
+        if (exit != null) {
+            Thread.sleep(200)
+            val stderr = synchronized(errorBuffer) { errorBuffer.toString() }
+            throw IOException("引擎进程异常退出，退出码：$exit\nSTDERR: $stderr")
+        }
+        Log.d(TAG, "Process started successfully, pid = ${process?.pid()}")
     }
 
     /**

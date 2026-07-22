@@ -13,7 +13,7 @@ class AppPreferences(context: Context) {
 
     /** 引擎模式：local / cloud / none */
     var engineMode: String
-        get() = prefs.getString(KEY_ENGINE_MODE, "none") ?: "none"
+        get() = prefs.getString(KEY_ENGINE_MODE, "local") ?: "local"
         set(value) = prefs.edit().putString(KEY_ENGINE_MODE, value).apply()
 
     /** 棋盘大小 */
