@@ -86,25 +86,22 @@ class PlayActivity : AppCompatActivity() {
                         // 收集调试信息
                         val debugInfo = buildString {
                             append("=== 引擎启动调试信息 ===\n")
-                            append("katago (DLC版): ").append(paths.katagoPath)
+                            append("可执行文件: ").append(paths.katagoPath)
                             append(" (存在: ").append(File(paths.katagoPath).exists()).append(")\n")
-                            append("katago_nosnpe (纯CPU版): ").append(paths.katagoNoSnpePath)
-                            append(" (存在: ").append(File(paths.katagoNoSnpePath).exists()).append(")\n")
+                            append("10b模型: ").append(paths.model10bPath)
+                            append(" (存在: ").append(File(paths.model10bPath).exists())
+                            append(", 大小: ").append(File(paths.model10bPath).length()).append(")\n")
                             append("20b_head模型: ").append(paths.model20bHeadPath)
                             append(" (存在: ").append(File(paths.model20bHeadPath).exists())
                             append(", 大小: ").append(File(paths.model20bHeadPath).length()).append(")\n")
                             append("20b_tflite模型: ").append(paths.model20bTflitePath)
                             append(" (存在: ").append(File(paths.model20bTflitePath).exists())
                             append(", 大小: ").append(File(paths.model20bTflitePath).length()).append(")\n")
-                            append("10b模型: ").append(paths.model10bPath)
-                            append(" (存在: ").append(File(paths.model10bPath).exists())
-                            append(", 大小: ").append(File(paths.model10bPath).length()).append(")\n")
-                            append("静态配置: ").append(paths.configStaticPath)
-                            append(" (存在: ").append(File(paths.configStaticPath).exists())
-                            append(", 大小: ").append(File(paths.configStaticPath).length()).append(")\n")
-                            append("GTP日志目录: ").append(paths.gtpLogDir).append("\n")
-                            append("lib目录: ").append(paths.libDir).append("\n")
-                            append("尝试顺序: DLC版(katago.so) -> nosnpe版+TFLite -> nosnpe版纯CPU\n")
+                            append("配置文件: ").append(paths.configPath)
+                            append(" (存在: ").append(File(paths.configPath).exists())
+                            append(", 大小: ").append(File(paths.configPath).length()).append(")\n")
+                            append("库目录: ").append(paths.libDir).append("\n")
+                            append("启动模式: 优先nosnpe+TFLite模式, 失败则降级到纯CPU模式\n")
                             append("======================\n\n")
                         }
 
@@ -117,9 +114,8 @@ class PlayActivity : AppCompatActivity() {
                             paths.katagoNoSnpePath,
                             paths.model20bHeadPath,
                             paths.model20bTflitePath,
-                            paths.configStaticPath,
+                            paths.configPath,
                             paths.gtpLogDir,
-                            paths.libDir,
                             paths.libDir,
                             logFile
                         )

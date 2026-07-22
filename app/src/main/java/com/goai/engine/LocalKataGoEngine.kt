@@ -12,10 +12,9 @@ class LocalKataGoEngine(
     private val katagoNoSnpePath: String,
     private val modelBinGzPath: String,
     private val modelTflitePath: String?,
-    private val configStaticPath: String,
+    private val configPath: String,
     private val gtpLogDir: String,
     private val libDir: String?,
-    private val workDir: String?,
     private val logFile: File?
 ) : GoEngine {
 
@@ -51,7 +50,13 @@ class LocalKataGoEngine(
                 line.contains("Signal", ignoreCase = true) ||
                 line.contains("signal", ignoreCase = true) ||
                 line.contains("libc", ignoreCase = true) ||
-                line.contains("DEBUG", ignoreCase = true)
+                line.contains("DEBUG", ignoreCase = true) ||
+                line.contains("crash", ignoreCase = true) ||
+                line.contains("Crash", ignoreCase = true) ||
+                line.contains("dlopen", ignoreCase = true) ||
+                line.contains("linker", ignoreCase = true) ||
+                line.contains("Linker", ignoreCase = true) ||
+                line.contains("CANNOT LINK", ignoreCase = true)
             }
             appendLog("=== LOGCAT ($tag) ===")
             filtered.forEach { appendLog(it) }
@@ -69,53 +74,49 @@ class LocalKataGoEngine(
         if (modelTflitePath != null) {
             appendLog("模型(tflite): $modelTflitePath (${File(modelTflitePath).exists()}, ${File(modelTflitePath).length()} bytes)")
         }
-        appendLog("静态配置: $configStaticPath (${File(configStaticPath).exists()})")
-        appendLog("日志目录: $gtpLogDir")
+        appendLog("配置文件: $configPath (${File(configPath).exists()}, ${File(configPath).length()} bytes)")
+        appendLog("GTP日志目录: $gtpLogDir")
         appendLog("lib目录: $libDir")
-        appendLog("工作目录: $workDir")
+        libDir?.let {
+            val libDirFile = File(it)
+            if (libDirFile.exists() && libDirFile.isDirectory) {
+                val files = libDirFile.listFiles()?.map { f -> f.name }?.sorted()
+                appendLog("lib目录文件数: ${files?.size ?: 0}")
+                files?.forEach { f -> appendLog("  - $f") }
+            }
+        }
 
-        // 确保日志目录存在
         val gtpLogDirFile = File(gtpLogDir)
         if (!gtpLogDirFile.exists()) {
             gtpLogDirFile.mkdirs()
             appendLog("创建日志目录: ${gtpLogDirFile.absolutePath}")
         }
 
-        // 生成 gtp.cfg（照抄 BadukAI：static + dynamic + logDir + defaultBoardSize）
-        val gtpCfgFile = File(gtpLogDirFile.parentFile, "gtp.cfg")
-        val configStaticFile = File(configStaticPath)
-        val staticContent = if (configStaticFile.exists()) configStaticFile.readText() else ""
-        val gtpCfgContent = buildString {
-            append(staticContent)
-            if (!staticContent.endsWith("\n")) append("\n")
-            append("logDir = $gtpLogDir\n")
-            append("defaultBoardSize = $boardSize\n")
-            append("defaultKomi = $komi\n")
-        }
-        gtpCfgFile.writeText(gtpCfgContent)
-        appendLog("生成 gtp.cfg: ${gtpCfgFile.absolutePath} (${gtpCfgContent.length} bytes)")
-
-        // 清空 logcat
         try { Runtime.getRuntime().exec("logcat -c").waitFor() } catch (_: Exception) {}
 
         val hasTflite = modelTflitePath != null && File(modelTflitePath).exists()
 
-        val attempts = listOf(
-            Triple("DLC模式: katago.so + bin.gz + tflite", katagoPath, true),
-            Triple("纯CPU模式: katago_nosnpe.so + bin.gz + tflite", katagoNoSnpePath, true),
-            Triple("纯CPU模式: katago_nosnpe.so + bin.gz (无tflite)", katagoNoSnpePath, false),
-        )
+        val attempts = buildList {
+            if (hasTflite && modelTflitePath != null) {
+                add(Triple("nosnpe + bin.gz + tflite", katagoNoSnpePath, modelBinGzPath to modelTflitePath))
+                add(Triple("dlc + bin.gz + tflite", katagoPath, modelBinGzPath to modelTflitePath))
+            }
+            add(Triple("nosnpe + bin.gz (纯CPU)", katagoNoSnpePath, modelBinGzPath to null))
+            add(Triple("dlc + bin.gz", katagoPath, modelBinGzPath to null))
+        }
 
-        for ((modeName, binary, useTflite) in attempts) {
-            if (useTflite && !hasTflite) continue
+        for ((modeName, binary, modelPair) in attempts) {
+            val (model, tfliteModel) = modelPair
+
             appendLog("\n--- 尝试启动: $modeName ---")
             appendLog("二进制: $binary")
-            appendLog("模型: $modelBinGzPath")
-            if (useTflite && modelTflitePath != null) {
-                appendLog("TFLite模型: $modelTflitePath")
+            appendLog("模型: $model")
+            if (tfliteModel != null) {
+                appendLog("TFLite模型: $tfliteModel")
             }
+
             try {
-                val success = tryStartGtp(binary, modelBinGzPath, gtpCfgFile.absolutePath, boardSize, komi)
+                val success = tryStartGtp(binary, model, tfliteModel, configPath, boardSize, komi)
                 if (success) {
                     appendLog("$modeName 启动成功!")
                     captureLogcat("after-success")
@@ -123,11 +124,12 @@ class LocalKataGoEngine(
                 }
             } catch (e: Exception) {
                 appendLog("启动异常: ${e.message}")
-                captureLogcat("after-failure-$modeName")
+                captureLogcat("after-failure-${modeName.replace(" ", "_")}")
             }
             appendLog("$modeName 失败，继续尝试下一个...")
         }
 
+        captureLogcat("final-failure")
         appendLog("\n所有模式均失败")
         throw Exception("所有引擎模式均启动失败，请查看日志详情")
     }
@@ -135,17 +137,35 @@ class LocalKataGoEngine(
     private suspend fun tryStartGtp(
         binary: String,
         modelPath: String,
+        tfliteModelPath: String?,
         configPath: String,
         boardSize: Int,
         komi: Float
     ): Boolean {
-        val client = GTPClient(
-            binary,
-            listOf("gtp", "-model", modelPath, "-config", configPath)
-        )
+        val args = mutableListOf("gtp", "-model", modelPath, "-config", configPath)
+        if (tfliteModelPath != null) {
+            args.add("-tflite-model")
+            args.add(tfliteModelPath)
+        }
+
+        val commandStr = "$binary ${args.joinToString(" ")}"
+        appendLog("启动命令：$commandStr")
+
+        val client = GTPClient(binary, args)
         return try {
-            client.start(libDir, workDir)
-            appendLog("进程已启动，发送 name 命令...")
+            client.start(libDir, libDir)
+            appendLog("进程已启动，等待输出...")
+            Thread.sleep(3000)
+            val exitCode = client.exitValue
+            if (exitCode != null) {
+                appendLog("进程已退出，退出码: $exitCode")
+                appendLog("STDERR: ${client.lastError}")
+                val stdout = client.readAllStdout()
+                appendLog("STDOUT: $stdout")
+                client.close()
+                return false
+            }
+            appendLog("进程仍在运行，发送 name 命令...")
             val name = client.sendCommand("name")
             appendLog("name: $name")
             val version = client.sendCommand("version")
@@ -160,6 +180,11 @@ class LocalKataGoEngine(
             val exitCode = client.exitValue
             appendLog("失败 - 退出码: $exitCode")
             appendLog("异常: ${e.message}")
+            appendLog("STDERR: ${client.lastError}")
+            try {
+                val stdout = client.readAllStdout()
+                appendLog("STDOUT: $stdout")
+            } catch (_: Exception) {}
             client.close()
             false
         }

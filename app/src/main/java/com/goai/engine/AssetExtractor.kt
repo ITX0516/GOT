@@ -24,11 +24,13 @@ object AssetExtractor {
         val model10bFile = File(targetDir, "10b.bin.gz")
         val model20bHeadFile = File(targetDir, "20b.bin.gz")
         val model20bTfliteFile = File(targetDir, "20b.tflite")
+        val configFile = File(targetDir, "gtp.cfg")
         val configStaticFile = File(targetDir, "gtp_static.cfg")
 
         copyAssetIfNewer(context, "katago/10b.bin", model10bFile)
         copyAssetIfNewer(context, "katago/20b_head.bin", model20bHeadFile)
         copyAssetIfNewer(context, "katago/20b.tflite", model20bTfliteFile)
+        copyAssetIfNewer(context, "katago/gtp.cfg", configFile)
         copyAssetIfNewer(context, "katago/gtp_static.cfg", configStaticFile)
 
         val katagoBin = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
@@ -40,6 +42,7 @@ object AssetExtractor {
             model10bPath = model10bFile.absolutePath,
             model20bHeadPath = model20bHeadFile.absolutePath,
             model20bTflitePath = model20bTfliteFile.absolutePath,
+            configPath = configFile.absolutePath,
             configStaticPath = configStaticFile.absolutePath,
             gtpLogDir = gtpLogDir.absolutePath,
             libDir = context.applicationInfo.nativeLibraryDir
@@ -76,6 +79,7 @@ data class KataGoPaths(
     val model10bPath: String,
     val model20bHeadPath: String,
     val model20bTflitePath: String,
+    val configPath: String,
     val configStaticPath: String,
     val gtpLogDir: String,
     val libDir: String

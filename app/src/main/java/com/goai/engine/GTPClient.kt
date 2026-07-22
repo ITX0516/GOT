@@ -67,6 +67,11 @@ class GTPClient(
         return builder.toString()
     }
 
+    /** 读取所有 stderr 输出 */
+    fun readAllStderr(): String {
+        return synchronized(errorBuffer) { errorBuffer.toString() }
+    }
+
     /** 启动子进程 */
     suspend fun start(libDir: String? = null, workDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
@@ -104,8 +109,8 @@ class GTPClient(
                     Log.e(TAG, "STDERR: $line")
                     synchronized(errorBuffer) {
                         errorBuffer.append(line).append("\n")
-                        if (errorBuffer.length > 8192) {
-                            errorBuffer.delete(0, errorBuffer.length - 8192)
+                        if (errorBuffer.length > 32768) {
+                            errorBuffer.delete(0, errorBuffer.length - 32768)
                         }
                     }
                 }
@@ -116,51 +121,6 @@ class GTPClient(
             start()
         }
 
-        // 等待 1.5 秒，检查进程是否异常退出
-        try {
-            Thread.sleep(1500)
-        } catch (_: InterruptedException) {
-        }
-        val exit = try {
-            process?.exitValue()
-        } catch (_: IllegalThreadStateException) {
-            null
-        }
-        if (exit != null) {
-            Thread.sleep(300)
-            val stderr = synchronized(errorBuffer) { errorBuffer.toString() }
-            // 读取所有可用的 stdout
-            val stdoutBuilder = StringBuilder()
-            try {
-                while (reader!!.ready()) {
-                    val line = reader!!.readLine()
-                    if (line != null) {
-                        stdoutBuilder.append(line).append("\n")
-                    } else {
-                        break
-                    }
-                }
-            } catch (_: Exception) {
-            }
-            // 如果 ready() 没读到，尝试直接读
-            if (stdoutBuilder.isEmpty()) {
-                try {
-                    val chars = CharArray(4096)
-                    val n = reader!!.read(chars)
-                    if (n > 0) {
-                        stdoutBuilder.append(chars, 0, n)
-                    }
-                } catch (_: Exception) {
-                }
-            }
-            val stdout = stdoutBuilder.toString()
-            throw IOException(
-                "引擎进程已退出，退出码：$exit\n\n" +
-                "启动命令：$commandStr\n\n" +
-                "=== STDOUT ===\n$stdout\n\n" +
-                "=== STDERR ===\n$stderr"
-            )
-        }
         Log.d(TAG, "Process started successfully")
     }
 
