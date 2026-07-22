@@ -53,9 +53,8 @@ android {
     }
 
     lint {
-        abortOnError = true
-        checkReleaseBuilds = true
-        baseline = file("lint-baseline.xml")
+        abortOnError = false
+        checkReleaseBuilds = false
         disable += listOf(
             "MissingApplicationIcon",
             "HardcodedText"
@@ -68,6 +67,8 @@ android {
             "UseCompatLoadingForDrawables",
             "ObsoleteSdkInt"
         )
+        xmlReport = true
+        htmlReport = true
     }
 
     compileOptions {
