@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GoAI"
+rootProject.name = "GOT"
 include(":app")

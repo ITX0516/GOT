@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.GoAI" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.GOT" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/go_primary</item>
         <item name="colorOnPrimary">@color/go_on_primary</item>
         <item name="colorPrimaryContainer">@color/go_primary</item>

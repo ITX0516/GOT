@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">GoAI</string>
+    <string name="app_name">GOT</string>
     <string name="play_game">人机对弈</string>
     <string name="settings">设置</string>
     <string name="engine_local">本地引擎</string>
