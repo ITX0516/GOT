@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <issue id="MissingApplicationIcon" severity="ignore" />
+    <issue id="HardcodedText" severity="ignore" />
+
+    <issue id="NewApi" severity="error" />
+    <issue id="MissingPermission" severity="error" />
+    <issue id="UseRequireInsteadOfGet" severity="error" />
+    <issue id="Assert" severity="error" />
+    <issue id="CheckResult" severity="error" />
+
+    <issue id="UseCompatLoadingForDrawables" severity="warning" />
+    <issue id="ObsoleteSdkInt" severity="warning" />
+    <issue id="ExportedReceiver" severity="warning" />
+    <issue id="ExportedService" severity="warning" />
+    <issue id="ExportedContentProvider" severity="warning" />
+
+    <issue id="TypographyEllipsis" severity="warning" />
+    <issue id="Typo" severity="warning" />
+
+    <issue id="UnusedImport" severity="warning" />
+    <issue id="UnusedResources" severity="warning" />
+</lint>

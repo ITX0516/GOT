@@ -25,8 +25,30 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Run Lint Check
+        run: ./gradlew lintRelease --no-daemon
+
+      - name: Upload Lint Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-release.html
+
+      - name: Decode keystore
+        if: ${{ secrets.SIGNING_KEYSTORE != '' }}
+        run: |
+          echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 -d > app/release-keystore.jks
+        env:
+          SIGNING_STORE_FILE: app/release-keystore.jks
+
       - name: Build Release APK (ARM64 only)
         run: ./gradlew assembleRelease --no-daemon
+        env:
+          SIGNING_STORE_FILE: ${{ secrets.SIGNING_KEYSTORE != '' && 'app/release-keystore.jks' || '' }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
