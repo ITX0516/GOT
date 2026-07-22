@@ -14,6 +14,7 @@ import com.goai.R
 import com.goai.ai.LLMService
 import com.goai.data.AppPreferences
 import com.goai.databinding.ActivityPlayBinding
+import com.goai.engine.AssetExtractor
 import com.goai.engine.GoEngine
 import com.goai.engine.LocalKataGoEngine
 import com.goai.model.AnalysisData
@@ -75,20 +76,25 @@ class PlayActivity : AppCompatActivity() {
     private fun setupEngine() {
         when (prefs.engineMode) {
             "local" -> {
-                // 本地 KataGo 引擎
-                val modelPath = "katago/model.bin.gz"  // assets 中的模型
-                val execPath = applicationInfo.nativeLibraryDir + "/libkatago.so"
-                engine = LocalKataGoEngine(modelPath, execPath)
                 lifecycleScope.launch {
-                    val ok = engine!!.init(gameState.boardSize, gameState.komi)
-                    if (!ok) {
-                        showToast("本地引擎初始化失败")
+                    binding.progressBar.visibility = View.VISIBLE
+                    try {
+                        val paths = AssetExtractor.extractKataGoAssets(this@PlayActivity)
+                        engine = LocalKataGoEngine(paths.executablePath, paths.modelPath, paths.configPath)
+                        val ok = engine!!.init(gameState.boardSize, gameState.komi)
+                        if (!ok) {
+                            showToast("本地引擎初始化失败")
+                            engine = null
+                        }
+                    } catch (e: Exception) {
+                        showToast("引擎启动失败：${e.message}")
                         engine = null
+                    } finally {
+                        binding.progressBar.visibility = View.GONE
                     }
                 }
             }
             "cloud" -> {
-                // 云端引擎暂未实现
                 showToast("云端引擎尚未配置")
             }
         }

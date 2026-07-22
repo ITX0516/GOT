@@ -10,8 +10,9 @@ import com.goai.model.Stone
  * 通过 [GTPClient] 与 katago 可执行文件通信，实现 [GoEngine] 接口
  */
 class LocalKataGoEngine(
+    private val executablePath: String,
     private val modelPath: String,
-    private val executablePath: String
+    private val configPath: String
 ) : GoEngine {
 
     override val name: String = "KataGo"
@@ -19,7 +20,7 @@ class LocalKataGoEngine(
     /** GTP 客户端：以 gtp 模式启动 katago */
     private val gtpClient: GTPClient = GTPClient(
         executablePath,
-        listOf("gtp", "-model", modelPath)
+        listOf("gtp", "-model", modelPath, "-config", configPath)
     )
 
     /** 引擎是否就绪：GTPClient 已启动且子进程存活 */
