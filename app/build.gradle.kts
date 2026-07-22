@@ -67,9 +67,8 @@ android {
         }
     }
 
-    // 不压缩 .gz 文件，避免 AAPT 对模型文件做特殊处理导致 assets.open() 失败
     aaptOptions {
-        noCompress("gz")
+        noCompress("gz", "tflite", "bin")
     }
 
     packaging {
