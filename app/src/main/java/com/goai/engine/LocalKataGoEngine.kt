@@ -33,11 +33,14 @@ class LocalKataGoEngine(
             gtpClient.start()
             gtpClient.sendCommand("boardsize $boardSize")
             gtpClient.sendCommand("komi $komi")
-            // 时间设置：主时间 0、byo-yomi 时间 1 秒、byo-yomi 次数 0
             gtpClient.sendCommand("time_settings 0 1 0")
             true
         } catch (e: Exception) {
-            false
+            val stderr = gtpClient.lastError
+            if (stderr.isNotEmpty()) {
+                throw Exception("${e.message}\nSTDERR: $stderr")
+            }
+            throw e
         }
     }
 

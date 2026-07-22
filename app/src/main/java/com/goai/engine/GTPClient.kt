@@ -1,5 +1,6 @@
 package com.goai.engine
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -18,25 +19,56 @@ class GTPClient(
     private val executablePath: String,
     private val arguments: List<String> = emptyList()
 ) {
+    private val TAG = "GTPClient"
+
     /** 子进程 */
     private var process: Process? = null
     /** 写入子进程 stdin */
     private var writer: OutputStreamWriter? = null
     /** 读取子进程 stdout */
     private var reader: BufferedReader? = null
+    /** 读取子进程 stderr */
+    private var errorReader: BufferedReader? = null
+    /** stderr 收集的错误信息 */
+    private val errorBuffer = StringBuilder()
 
     /** 引擎子进程是否在运行 */
     val isRunning: Boolean
         get() = process?.isAlive == true
 
+    /** 获取最近的 stderr 输出 */
+    val lastError: String
+        get() = errorBuffer.toString()
+
     /** 启动子进程 */
     suspend fun start(): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
+        Log.d(TAG, "Starting process: ${command.joinToString(" ")}")
         val processBuilder = ProcessBuilder(command)
         processBuilder.redirectErrorStream(false)
         process = processBuilder.start()
         writer = OutputStreamWriter(process!!.outputStream, Charsets.UTF_8)
         reader = BufferedReader(InputStreamReader(process!!.inputStream, Charsets.UTF_8))
+        errorReader = BufferedReader(InputStreamReader(process!!.errorStream, Charsets.UTF_8))
+
+        Thread {
+            try {
+                var line: String?
+                while (errorReader!!.readLine().also { line = it } != null) {
+                    Log.e(TAG, "STDERR: $line")
+                    synchronized(errorBuffer) {
+                        errorBuffer.append(line).append("\n")
+                        if (errorBuffer.length > 8192) {
+                            errorBuffer.delete(0, errorBuffer.length - 8192)
+                        }
+                    }
+                }
+            } catch (_: IOException) {
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
     }
 
     /**
