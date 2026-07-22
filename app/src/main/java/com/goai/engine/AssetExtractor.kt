@@ -32,16 +32,16 @@ object AssetExtractor {
     }
 
     private fun copyAssetIfNewer(context: Context, assetPath: String, targetFile: File) {
-        val assetManager = context.assets
-        val am = assetManager.openFd(assetPath)
-        val assetSize = am.length
-        am.close()
+        // openFd 对压缩的 asset 会抛异常，改用版本标记文件判断是否已释放
+        val versionFile = File(targetFile.parentFile, ".extracted_version")
+        val currentVersion = context.packageManager
+            .getPackageInfo(context.packageName, 0).longVersionCode.toString()
 
-        if (targetFile.exists() && targetFile.length() == assetSize) {
+        if (versionFile.exists() && versionFile.readText() == currentVersion && targetFile.exists()) {
             return
         }
 
-        val inputStream = assetManager.open(assetPath)
+        val inputStream = context.assets.open(assetPath)
         val outputStream = FileOutputStream(targetFile)
         val buffer = ByteArray(8192)
         var bytesRead: Int
@@ -51,6 +51,8 @@ object AssetExtractor {
         inputStream.close()
         outputStream.flush()
         outputStream.close()
+
+        versionFile.writeText(currentVersion)
     }
 }
 
