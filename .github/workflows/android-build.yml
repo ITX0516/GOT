@@ -26,6 +26,22 @@ jobs:
         with:
           gradle-version: 8.2
 
+      - name: Generate fixed debug keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore $HOME/fixed-debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=GOT Debug,O=GoAI,C=CN"
+          echo "SIGNING_STORE_FILE=$HOME/fixed-debug.keystore" >> $GITHUB_ENV
+          echo "SIGNING_STORE_PASSWORD=android" >> $GITHUB_ENV
+          echo "SIGNING_KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
+          echo "SIGNING_KEY_PASSWORD=android" >> $GITHUB_ENV
+
       - name: Build Debug APK
         run: |
           set -o pipefail
