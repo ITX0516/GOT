@@ -7,25 +7,19 @@ import com.goai.model.GameState
 import com.goai.model.Stone
 import java.io.File
 
-/**
- * 本地 KataGo 引擎
- * 启动逻辑完全照抄 BadukAI (lzwrapper.py)：
- * - 优先使用 20b DLC 模式 (20b.bin.gz + 20b.tflite)
- * - 设置 LD_LIBRARY_PATH 和 ADSP_LIBRARY_PATH
- * - 配置文件合并 gtp_static.cfg + 动态参数
- */
 class LocalKataGoEngine(
-    private val executablePath: String,
-    private val model10bPath: String,
-    private val model20bHeadPath: String,
-    private val model20bTflitePath: String,
-    private val configPath: String,
-    private val libDir: String? = null,
-    private val logFile: File? = null
+    private val katagoPath: String,
+    private val katagoNoSnpePath: String,
+    private val modelBinGzPath: String,
+    private val modelTflitePath: String?,
+    private val configStaticPath: String,
+    private val gtpLogDir: String,
+    private val libDir: String?,
+    private val workDir: String?,
+    private val logFile: File?
 ) : GoEngine {
 
     override val name: String = "KataGo"
-
     private var gtpClient: GTPClient? = null
 
     override val isReady: Boolean
@@ -38,51 +32,120 @@ class LocalKataGoEngine(
         Log.d("KataGoEngine", msg)
     }
 
+    private fun captureLogcat(tag: String) {
+        try {
+            val proc = Runtime.getRuntime().exec("logcat -d -v time")
+            val output = proc.inputStream.bufferedReader().use { it.readText() }
+            proc.waitFor()
+            val filtered = output.lines().filter { line ->
+                line.contains("libkatago", ignoreCase = true) ||
+                line.contains("KataGo", ignoreCase = true) ||
+                line.contains("katago", ignoreCase = true) ||
+                line.contains("tflite", ignoreCase = true) ||
+                line.contains("TFLite", ignoreCase = true) ||
+                line.contains("QNN", ignoreCase = true) ||
+                line.contains("qnn", ignoreCase = true) ||
+                line.contains("FATAL", ignoreCase = true) ||
+                line.contains("ERROR", ignoreCase = true) ||
+                line.contains("Fatal", ignoreCase = true) ||
+                line.contains("Signal", ignoreCase = true) ||
+                line.contains("signal", ignoreCase = true) ||
+                line.contains("libc", ignoreCase = true) ||
+                line.contains("DEBUG", ignoreCase = true)
+            }
+            appendLog("=== LOGCAT ($tag) ===")
+            filtered.forEach { appendLog(it) }
+            appendLog("=== LOGCAT END ===")
+        } catch (e: Exception) {
+            appendLog("logcat capture failed: ${e.message}")
+        }
+    }
+
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
         appendLog("=== 开始初始化 KataGo 引擎 ===")
-        appendLog("可执行文件: $executablePath (存在: ${File(executablePath).exists()})")
-        appendLog("10b模型: $model10bPath (存在: ${File(model10bPath).exists()}, 大小: ${File(model10bPath).length()})")
-        appendLog("20b_head模型: $model20bHeadPath (存在: ${File(model20bHeadPath).exists()}, 大小: ${File(model20bHeadPath).length()})")
-        appendLog("20b_tflite模型: $model20bTflitePath (存在: ${File(model20bTflitePath).exists()}, 大小: ${File(model20bTflitePath).length()})")
-        appendLog("配置文件: $configPath (存在: ${File(configPath).exists()}, 大小: ${File(configPath).length()})")
-        appendLog("库目录: $libDir")
+        appendLog("katago (DLC版): $katagoPath (${File(katagoPath).exists()})")
+        appendLog("katago_nosnpe (纯CPU版): $katagoNoSnpePath (${File(katagoNoSnpePath).exists()})")
+        appendLog("模型(bin.gz): $modelBinGzPath (${File(modelBinGzPath).exists()}, ${File(modelBinGzPath).length()} bytes)")
+        if (modelTflitePath != null) {
+            appendLog("模型(tflite): $modelTflitePath (${File(modelTflitePath).exists()}, ${File(modelTflitePath).length()} bytes)")
+        }
+        appendLog("静态配置: $configStaticPath (${File(configStaticPath).exists()})")
+        appendLog("日志目录: $gtpLogDir")
+        appendLog("lib目录: $libDir")
+        appendLog("工作目录: $workDir")
 
-        libDir?.let {
-            val libDirFile = File(it)
-            if (libDirFile.exists() && libDirFile.isDirectory) {
-                appendLog("库目录文件数: ${libDirFile.listFiles()?.size}")
-            }
+        // 确保日志目录存在
+        val gtpLogDirFile = File(gtpLogDir)
+        if (!gtpLogDirFile.exists()) {
+            gtpLogDirFile.mkdirs()
+            appendLog("创建日志目录: ${gtpLogDirFile.absolutePath}")
         }
 
-        // 按优先级尝试启动：20b DLC 模式 > 10b 纯 CPU 模式
+        // 生成 gtp.cfg（照抄 BadukAI：static + dynamic + logDir + defaultBoardSize）
+        val gtpCfgFile = File(gtpLogDirFile.parentFile, "gtp.cfg")
+        val configStaticFile = File(configStaticPath)
+        val staticContent = if (configStaticFile.exists()) configStaticFile.readText() else ""
+        val gtpCfgContent = buildString {
+            append(staticContent)
+            if (!staticContent.endsWith("\n")) append("\n")
+            append("logDir = $gtpLogDir\n")
+            append("defaultBoardSize = $boardSize\n")
+            append("defaultKomi = $komi\n")
+        }
+        gtpCfgFile.writeText(gtpCfgContent)
+        appendLog("生成 gtp.cfg: ${gtpCfgFile.absolutePath} (${gtpCfgContent.length} bytes)")
+
+        // 清空 logcat
+        try { Runtime.getRuntime().exec("logcat -c").waitFor() } catch (_: Exception) {}
+
+        val hasTflite = modelTflitePath != null && File(modelTflitePath).exists()
+
         val attempts = listOf(
-            Triple("20b DLC模式 (20b.bin.gz + 20b.tflite)", model20bHeadPath, true),
-            Triple("10b 纯CPU模式 (10b.bin.gz)", model10bPath, false),
+            Triple("DLC模式: katago.so + bin.gz + tflite", katagoPath, true),
+            Triple("纯CPU模式: katago_nosnpe.so + bin.gz + tflite", katagoNoSnpePath, true),
+            Triple("纯CPU模式: katago_nosnpe.so + bin.gz (无tflite)", katagoNoSnpePath, false),
         )
 
-        for ((modeName, modelPath, _) in attempts) {
+        for ((modeName, binary, useTflite) in attempts) {
+            if (useTflite && !hasTflite) continue
             appendLog("\n--- 尝试启动: $modeName ---")
-            val success = tryStartGtp(modelPath, boardSize, komi)
-            if (success) {
-                appendLog("$modeName 启动成功!")
-                return true
+            appendLog("二进制: $binary")
+            appendLog("模型: $modelBinGzPath")
+            if (useTflite && modelTflitePath != null) {
+                appendLog("TFLite模型: $modelTflitePath")
             }
-            appendLog("$modeName 启动失败，尝试下一个...")
+            try {
+                val success = tryStartGtp(binary, modelBinGzPath, gtpCfgFile.absolutePath, boardSize, komi)
+                if (success) {
+                    appendLog("$modeName 启动成功!")
+                    captureLogcat("after-success")
+                    return true
+                }
+            } catch (e: Exception) {
+                appendLog("启动异常: ${e.message}")
+                captureLogcat("after-failure-$modeName")
+            }
+            appendLog("$modeName 失败，继续尝试下一个...")
         }
 
-        appendLog("\n所有模式均启动失败")
+        appendLog("\n所有模式均失败")
         throw Exception("所有引擎模式均启动失败，请查看日志详情")
     }
 
-    /** 尝试以指定模型启动 GTP 模式 */
-    private suspend fun tryStartGtp(modelPath: String, boardSize: Int, komi: Float): Boolean {
+    private suspend fun tryStartGtp(
+        binary: String,
+        modelPath: String,
+        configPath: String,
+        boardSize: Int,
+        komi: Float
+    ): Boolean {
         val client = GTPClient(
-            executablePath,
+            binary,
             listOf("gtp", "-model", modelPath, "-config", configPath)
         )
         return try {
-            client.start(libDir)
-            appendLog("进程启动成功，发送 name/version 测试...")
+            client.start(libDir, workDir)
+            appendLog("进程已启动，发送 name 命令...")
             val name = client.sendCommand("name")
             appendLog("name: $name")
             val version = client.sendCommand("version")
@@ -90,15 +153,13 @@ class LocalKataGoEngine(
             client.sendCommand("boardsize $boardSize")
             client.sendCommand("komi $komi")
             client.sendCommand("time_settings 0 1 0")
-            appendLog("GTP 初始化命令发送成功")
+            appendLog("GTP 初始化完成")
             gtpClient = client
             true
         } catch (e: Exception) {
             val exitCode = client.exitValue
-            val stderr = client.lastError
-            appendLog("启动失败，退出码: $exitCode")
+            appendLog("失败 - 退出码: $exitCode")
             appendLog("异常: ${e.message}")
-            appendLog("STDERR: $stderr")
             client.close()
             false
         }
@@ -123,10 +184,7 @@ class LocalKataGoEngine(
                 return null
             }
         }
-        try {
-            gtpClient!!.sendCommand("name")
-        } catch (_: Exception) {
-        }
+        try { gtpClient!!.sendCommand("name") } catch (_: Exception) {}
         return parseAnalyzeLine(line)
     }
 

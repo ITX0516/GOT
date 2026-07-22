@@ -16,24 +16,33 @@ object AssetExtractor {
             targetDir.mkdirs()
         }
 
+        val gtpLogDir = File(targetDir, "gtp_logs")
+        if (!gtpLogDir.exists()) {
+            gtpLogDir.mkdirs()
+        }
+
         val model10bFile = File(targetDir, "10b.bin.gz")
         val model20bHeadFile = File(targetDir, "20b.bin.gz")
         val model20bTfliteFile = File(targetDir, "20b.tflite")
-        val configFile = File(targetDir, "gtp_static.cfg")
+        val configStaticFile = File(targetDir, "gtp_static.cfg")
 
         copyAssetIfNewer(context, "katago/10b.bin", model10bFile)
         copyAssetIfNewer(context, "katago/20b_head.bin", model20bHeadFile)
         copyAssetIfNewer(context, "katago/20b.tflite", model20bTfliteFile)
-        copyAssetIfNewer(context, "katago/gtp_static.cfg", configFile)
+        copyAssetIfNewer(context, "katago/gtp_static.cfg", configStaticFile)
 
-        val execFile = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
+        val katagoBin = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
+        val katagoNoSnpeBin = File(context.applicationInfo.nativeLibraryDir, "libkatago_nosnpe.so")
 
         KataGoPaths(
-            executablePath = execFile.absolutePath,
+            katagoPath = katagoBin.absolutePath,
+            katagoNoSnpePath = katagoNoSnpeBin.absolutePath,
             model10bPath = model10bFile.absolutePath,
             model20bHeadPath = model20bHeadFile.absolutePath,
             model20bTflitePath = model20bTfliteFile.absolutePath,
-            configPath = configFile.absolutePath
+            configStaticPath = configStaticFile.absolutePath,
+            gtpLogDir = gtpLogDir.absolutePath,
+            libDir = context.applicationInfo.nativeLibraryDir
         )
     }
 
@@ -62,9 +71,12 @@ object AssetExtractor {
 }
 
 data class KataGoPaths(
-    val executablePath: String,
+    val katagoPath: String,
+    val katagoNoSnpePath: String,
     val model10bPath: String,
     val model20bHeadPath: String,
     val model20bTflitePath: String,
-    val configPath: String
+    val configStaticPath: String,
+    val gtpLogDir: String,
+    val libDir: String
 )
