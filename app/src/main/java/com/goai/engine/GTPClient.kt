@@ -34,9 +34,17 @@ class GTPClient(
     /** 启动命令 */
     private var commandStr: String = ""
 
-    /** 引擎子进程是否在运行 */
+    /** 引擎是否在运行 */
     val isRunning: Boolean
         get() = process?.isAlive == true
+
+    /** 进程退出码（如果已退出） */
+    val exitValue: Int?
+        get() = try {
+            process?.exitValue()
+        } catch (_: IllegalThreadStateException) {
+            null
+        }
 
     /** 获取最近的 stderr 输出 */
     val lastError: String
