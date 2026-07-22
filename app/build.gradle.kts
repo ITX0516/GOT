@@ -59,6 +59,22 @@ android {
         debug {
             isMinifyEnabled = false
             isShrinkResources = false
+            // 统一签名：有 release keystore 时 debug 也用它，保证每次构建签名一致
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
+            }
+        }
+    }
+
+    // 不压缩 .gz 文件，避免 AAPT 对模型文件做特殊处理导致 assets.open() 失败
+    aaptOptions {
+        noCompress("gz")
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
