@@ -16,23 +16,28 @@ object AssetExtractor {
             targetDir.mkdirs()
         }
 
-        val modelFile = File(targetDir, "10b.bin.gz")
+        val model10bFile = File(targetDir, "10b.bin.gz")
+        val model20bHeadFile = File(targetDir, "20b.bin.gz")
+        val model20bTfliteFile = File(targetDir, "20b.tflite")
         val configFile = File(targetDir, "gtp_static.cfg")
 
-        copyAssetIfNewer(context, "katago/10b.bin", modelFile)
+        copyAssetIfNewer(context, "katago/10b.bin", model10bFile)
+        copyAssetIfNewer(context, "katago/20b_head.bin", model20bHeadFile)
+        copyAssetIfNewer(context, "katago/20b.tflite", model20bTfliteFile)
         copyAssetIfNewer(context, "katago/gtp_static.cfg", configFile)
 
         val execFile = File(context.applicationInfo.nativeLibraryDir, "libkatago.so")
 
         KataGoPaths(
             executablePath = execFile.absolutePath,
-            modelPath = modelFile.absolutePath,
+            model10bPath = model10bFile.absolutePath,
+            model20bHeadPath = model20bHeadFile.absolutePath,
+            model20bTflitePath = model20bTfliteFile.absolutePath,
             configPath = configFile.absolutePath
         )
     }
 
     private fun copyAssetIfNewer(context: Context, assetPath: String, targetFile: File) {
-        // openFd 对压缩的 asset 会抛异常，改用版本标记文件判断是否已释放
         val versionFile = File(targetFile.parentFile, ".extracted_version")
         val currentVersion = context.packageManager
             .getPackageInfo(context.packageName, 0).longVersionCode.toString()
@@ -58,6 +63,8 @@ object AssetExtractor {
 
 data class KataGoPaths(
     val executablePath: String,
-    val modelPath: String,
+    val model10bPath: String,
+    val model20bHeadPath: String,
+    val model20bTflitePath: String,
     val configPath: String
 )

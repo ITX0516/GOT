@@ -9,11 +9,16 @@ import java.io.File
 
 /**
  * 本地 KataGo 引擎
- * 通过 [GTPClient] 与 katago 可执行文件通信，实现 [GoEngine] 接口
+ * 启动逻辑完全照抄 BadukAI (lzwrapper.py)：
+ * - 优先使用 20b DLC 模式 (20b.bin.gz + 20b.tflite)
+ * - 设置 LD_LIBRARY_PATH 和 ADSP_LIBRARY_PATH
+ * - 配置文件合并 gtp_static.cfg + 动态参数
  */
 class LocalKataGoEngine(
     private val executablePath: String,
-    private val modelPath: String,
+    private val model10bPath: String,
+    private val model20bHeadPath: String,
+    private val model20bTflitePath: String,
     private val configPath: String,
     private val libDir: String? = null,
     private val logFile: File? = null
@@ -33,124 +38,70 @@ class LocalKataGoEngine(
         Log.d("KataGoEngine", msg)
     }
 
-    private fun clearLogcat() {
-        try {
-            val pb = ProcessBuilder("logcat", "-c")
-            pb.redirectErrorStream(true)
-            val p = pb.start()
-            p.waitFor()
-        } catch (_: Exception) {}
-    }
-
-    /** 读取全部 logcat 输出（不做过滤） */
-    private fun dumpLogcat(): String {
-        return try {
-            val pb = ProcessBuilder("logcat", "-d")
-            pb.redirectErrorStream(true)
-            val p = pb.start()
-            val output = p.inputStream.bufferedReader().readText()
-            p.waitFor()
-            // 排除我们自己写的日志，只保留其他进程的输出
-            output.split("\n").filter { line ->
-                !line.contains("KataGoEngine") &&
-                !line.contains("GTPClient")
-            }.joinToString("\n")
-        } catch (e: Exception) {
-            "读取logcat失败: ${e.message}"
-        }
-    }
-
     override suspend fun init(boardSize: Int, komi: Float): Boolean {
         appendLog("=== 开始初始化 KataGo 引擎 ===")
         appendLog("可执行文件: $executablePath (存在: ${File(executablePath).exists()})")
-        appendLog("模型文件: $modelPath (存在: ${File(modelPath).exists()}, 大小: ${File(modelPath).length()})")
+        appendLog("10b模型: $model10bPath (存在: ${File(model10bPath).exists()}, 大小: ${File(model10bPath).length()})")
+        appendLog("20b_head模型: $model20bHeadPath (存在: ${File(model20bHeadPath).exists()}, 大小: ${File(model20bHeadPath).length()})")
+        appendLog("20b_tflite模型: $model20bTflitePath (存在: ${File(model20bTflitePath).exists()}, 大小: ${File(model20bTflitePath).length()})")
         appendLog("配置文件: $configPath (存在: ${File(configPath).exists()}, 大小: ${File(configPath).length()})")
         appendLog("库目录: $libDir")
 
-        // 列出库目录中的所有文件
         libDir?.let {
             val libDirFile = File(it)
             if (libDirFile.exists() && libDirFile.isDirectory) {
-                appendLog("库目录文件列表:")
-                libDirFile.listFiles()?.forEach { f ->
-                    appendLog("  ${f.name} (${f.length()} bytes)")
-                }
+                appendLog("库目录文件数: ${libDirFile.listFiles()?.size}")
             }
         }
 
-        // 测试1: version 命令
-        appendLog("\n--- 测试1: version 命令 ---")
-        clearLogcat()
-        runAndCapture(listOf("version"))
+        // 按优先级尝试启动：20b DLC 模式 > 10b 纯 CPU 模式
+        val attempts = listOf(
+            Triple("20b DLC模式 (20b.bin.gz + 20b.tflite)", model20bHeadPath, true),
+            Triple("10b 纯CPU模式 (10b.bin.gz)", model10bPath, false),
+        )
 
-        // 测试2: benchmark 命令（带model和config）
-        appendLog("\n--- 测试2: benchmark 命令 ---")
-        clearLogcat()
-        runAndCapture(listOf("benchmark", "-model", modelPath, "-config", configPath))
-
-        // 测试3: 完整 GTP 启动
-        appendLog("\n--- 测试3: 完整GTP启动 (model + config) ---")
-        clearLogcat()
-        return try {
-            gtpClient = GTPClient(
-                executablePath,
-                listOf("gtp", "-model", modelPath, "-config", configPath)
-            )
-            gtpClient!!.start(libDir)
-            appendLog("GTP 模式启动成功，发送初始化命令...")
-            gtpClient!!.sendCommand("boardsize $boardSize")
-            gtpClient!!.sendCommand("komi $komi")
-            gtpClient!!.sendCommand("time_settings 0 1 0")
-            appendLog("初始化完成")
-            true
-        } catch (e: Exception) {
-            val stderr = gtpClient?.lastError ?: ""
-            val exitCode = gtpClient?.exitValue
-            appendLog("GTP 启动失败，退出码: $exitCode")
-            appendLog("异常消息: ${e.message}")
-            appendLog("STDERR: $stderr")
-
-            val logcatOutput = dumpLogcat()
-            appendLog("\n=== LOGCAT 输出(全部) ===")
-            appendLog(logcatOutput)
-            appendLog("=== LOGCAT 结束 ===\n")
-
-            throw Exception("${e.message}\nSTDERR: $stderr\n\nLOGCAT:\n$logcatOutput")
+        for ((modeName, modelPath, _) in attempts) {
+            appendLog("\n--- 尝试启动: $modeName ---")
+            val success = tryStartGtp(modelPath, boardSize, komi)
+            if (success) {
+                appendLog("$modeName 启动成功!")
+                return true
+            }
+            appendLog("$modeName 启动失败，尝试下一个...")
         }
+
+        appendLog("\n所有模式均启动失败")
+        throw Exception("所有引擎模式均启动失败，请查看日志详情")
     }
 
-    /** 运行命令并捕获 stdout/stderr 和全部 logcat */
-    private suspend fun runAndCapture(args: List<String>) {
-        val client = GTPClient(executablePath, args)
-        var startException: Exception? = null
-        try {
+    /** 尝试以指定模型启动 GTP 模式 */
+    private suspend fun tryStartGtp(modelPath: String, boardSize: Int, komi: Float): Boolean {
+        val client = GTPClient(
+            executablePath,
+            listOf("gtp", "-model", modelPath, "-config", configPath)
+        )
+        return try {
             client.start(libDir)
-            Thread.sleep(3000)
-            if (client.isRunning) {
-                appendLog("进程仍在运行")
-            }
+            appendLog("进程启动成功，发送 name/version 测试...")
+            val name = client.sendCommand("name")
+            appendLog("name: $name")
+            val version = client.sendCommand("version")
+            appendLog("version: $version")
+            client.sendCommand("boardsize $boardSize")
+            client.sendCommand("komi $komi")
+            client.sendCommand("time_settings 0 1 0")
+            appendLog("GTP 初始化命令发送成功")
+            gtpClient = client
+            true
         } catch (e: Exception) {
-            startException = e
+            val exitCode = client.exitValue
+            val stderr = client.lastError
+            appendLog("启动失败，退出码: $exitCode")
+            appendLog("异常: ${e.message}")
+            appendLog("STDERR: $stderr")
+            client.close()
+            false
         }
-
-        val exitCode = client.exitValue
-        val stderr = client.lastError
-        val exceptionOutput = startException?.message ?: ""
-        val remainingStdout = try {
-            client.readAllStdout()
-        } catch (_: Exception) { "" }
-
-        appendLog("退出码: $exitCode")
-        appendLog("=== 异常消息(含stdout/stderr) ===\n$exceptionOutput")
-        appendLog("=== 剩余STDOUT ===\n$remainingStdout")
-        appendLog("=== STDERR缓冲 ===\n$stderr")
-
-        val logcatOutput = dumpLogcat()
-        appendLog("=== LOGCAT 输出(全部) ===")
-        appendLog(logcatOutput)
-        appendLog("=== LOGCAT 结束 ===")
-
-        client.close()
     }
 
     override suspend fun genMove(color: Stone, gameState: GameState): String {

@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -67,21 +68,28 @@ class GTPClient(
     }
 
     /** 启动子进程 */
-    suspend fun start(libDir: String? = null): Unit = withContext(Dispatchers.IO) {
+    suspend fun start(libDir: String? = null, workDir: String? = null): Unit = withContext(Dispatchers.IO) {
         val command = mutableListOf(executablePath).apply { addAll(arguments) }
         commandStr = command.joinToString(" ")
         Log.d(TAG, "Starting process: $commandStr")
         val processBuilder = ProcessBuilder(command)
         processBuilder.redirectErrorStream(false)
+        if (workDir != null) {
+            processBuilder.directory(File(workDir))
+            Log.d(TAG, "Working directory: $workDir")
+        }
         if (libDir != null) {
             val env = processBuilder.environment()
+            // 完全照抄 BadukAI 的环境变量设置
             val currentLdPath = env["LD_LIBRARY_PATH"]
             env["LD_LIBRARY_PATH"] = if (currentLdPath.isNullOrEmpty()) {
-                libDir
+                "$libDir:/vendor/lib64:/system/vendor/lib64"
             } else {
-                "$libDir:$currentLdPath"
+                "$libDir:$currentLdPath:/vendor/lib64:/system/vendor/lib64"
             }
+            env["ADSP_LIBRARY_PATH"] = "$libDir;/system/lib/rfsa/adsp;/system/vendor/lib/rfsa/adsp;/dsp"
             Log.d(TAG, "LD_LIBRARY_PATH=${env["LD_LIBRARY_PATH"]}")
+            Log.d(TAG, "ADSP_LIBRARY_PATH=${env["ADSP_LIBRARY_PATH"]}")
         }
         process = processBuilder.start()
         writer = OutputStreamWriter(process!!.outputStream, Charsets.UTF_8)
