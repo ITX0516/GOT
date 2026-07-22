@@ -10,8 +10,9 @@ import java.io.File
 class LocalKataGoEngine(
     private val katagoPath: String,
     private val katagoNoSnpePath: String,
-    private val modelBinGzPath: String,
-    private val modelTflitePath: String?,
+    private val model10bPath: String,
+    private val model20bHeadPath: String,
+    private val model20bTflitePath: String?,
     private val configPath: String,
     private val gtpLogDir: String,
     private val libDir: String?,
@@ -70,9 +71,10 @@ class LocalKataGoEngine(
         appendLog("=== 开始初始化 KataGo 引擎 ===")
         appendLog("katago (DLC版): $katagoPath (${File(katagoPath).exists()})")
         appendLog("katago_nosnpe (纯CPU版): $katagoNoSnpePath (${File(katagoNoSnpePath).exists()})")
-        appendLog("模型(bin.gz): $modelBinGzPath (${File(modelBinGzPath).exists()}, ${File(modelBinGzPath).length()} bytes)")
-        if (modelTflitePath != null) {
-            appendLog("模型(tflite): $modelTflitePath (${File(modelTflitePath).exists()}, ${File(modelTflitePath).length()} bytes)")
+        appendLog("10b模型(完整): $model10bPath (${File(model10bPath).exists()}, ${File(model10bPath).length()} bytes)")
+        appendLog("20b_head模型: $model20bHeadPath (${File(model20bHeadPath).exists()}, ${File(model20bHeadPath).length()} bytes)")
+        if (model20bTflitePath != null) {
+            appendLog("20b_tflite模型: $model20bTflitePath (${File(model20bTflitePath).exists()}, ${File(model20bTflitePath).length()} bytes)")
         }
         appendLog("配置文件: $configPath (${File(configPath).exists()}, ${File(configPath).length()} bytes)")
         appendLog("GTP日志目录: $gtpLogDir")
@@ -94,39 +96,51 @@ class LocalKataGoEngine(
 
         try { Runtime.getRuntime().exec("logcat -c").waitFor() } catch (_: Exception) {}
 
-        val hasTflite = modelTflitePath != null && File(modelTflitePath).exists()
+        val has20bTflite = model20bTflitePath != null && File(model20bTflitePath).exists()
+
+        data class Attempt(
+            val modeName: String,
+            val binary: String,
+            val modelBinGz: String,
+            val modelTflite: String?
+        )
 
         val attempts = buildList {
-            if (hasTflite && modelTflitePath != null) {
-                add(Triple("nosnpe + bin.gz + tflite", katagoNoSnpePath, modelBinGzPath to modelTflitePath))
-                add(Triple("dlc + bin.gz + tflite", katagoPath, modelBinGzPath to modelTflitePath))
+            add(Attempt("nosnpe + 10b (纯CPU)", katagoNoSnpePath, model10bPath, null))
+            if (has20bTflite && model20bTflitePath != null) {
+                add(Attempt("nosnpe + 20b + tflite", katagoNoSnpePath, model20bHeadPath, model20bTflitePath))
+                add(Attempt("dlc + 20b + tflite", katagoPath, model20bHeadPath, model20bTflitePath))
             }
-            add(Triple("nosnpe + bin.gz (纯CPU)", katagoNoSnpePath, modelBinGzPath to null))
-            add(Triple("dlc + bin.gz", katagoPath, modelBinGzPath to null))
+            add(Attempt("dlc + 10b (纯CPU)", katagoPath, model10bPath, null))
         }
 
-        for ((modeName, binary, modelPair) in attempts) {
-            val (model, tfliteModel) = modelPair
-
-            appendLog("\n--- 尝试启动: $modeName ---")
-            appendLog("二进制: $binary")
-            appendLog("模型: $model")
-            if (tfliteModel != null) {
-                appendLog("TFLite模型: $tfliteModel")
+        for (attempt in attempts) {
+            appendLog("\n--- 尝试启动: ${attempt.modeName} ---")
+            appendLog("二进制: ${attempt.binary}")
+            appendLog("模型(bin.gz): ${attempt.modelBinGz}")
+            if (attempt.modelTflite != null) {
+                appendLog("模型(tflite): ${attempt.modelTflite}")
             }
 
             try {
-                val success = tryStartGtp(binary, model, tfliteModel, configPath, boardSize, komi)
+                val success = tryStartGtp(
+                    attempt.binary,
+                    attempt.modelBinGz,
+                    attempt.modelTflite,
+                    configPath,
+                    boardSize,
+                    komi
+                )
                 if (success) {
-                    appendLog("$modeName 启动成功!")
+                    appendLog("${attempt.modeName} 启动成功!")
                     captureLogcat("after-success")
                     return true
                 }
             } catch (e: Exception) {
                 appendLog("启动异常: ${e.message}")
-                captureLogcat("after-failure-${modeName.replace(" ", "_")}")
+                captureLogcat("after-failure-${attempt.modeName.replace(" ", "_")}")
             }
-            appendLog("$modeName 失败，继续尝试下一个...")
+            appendLog("${attempt.modeName} 失败，继续尝试下一个...")
         }
 
         captureLogcat("final-failure")
@@ -159,7 +173,7 @@ class LocalKataGoEngine(
             val exitCode = client.exitValue
             if (exitCode != null) {
                 appendLog("进程已退出，退出码: $exitCode")
-                appendLog("STDERR: ${client.lastError}")
+                appendLog("STDERR: ${client.readAllStderr()}")
                 val stdout = client.readAllStdout()
                 appendLog("STDOUT: $stdout")
                 client.close()
@@ -180,7 +194,7 @@ class LocalKataGoEngine(
             val exitCode = client.exitValue
             appendLog("失败 - 退出码: $exitCode")
             appendLog("异常: ${e.message}")
-            appendLog("STDERR: ${client.lastError}")
+            appendLog("STDERR: ${client.readAllStderr()}")
             try {
                 val stdout = client.readAllStdout()
                 appendLog("STDOUT: $stdout")

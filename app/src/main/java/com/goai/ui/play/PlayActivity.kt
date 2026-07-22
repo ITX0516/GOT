@@ -112,6 +112,7 @@ class PlayActivity : AppCompatActivity() {
                         engine = LocalKataGoEngine(
                             paths.katagoPath,
                             paths.katagoNoSnpePath,
+                            paths.model10bPath,
                             paths.model20bHeadPath,
                             paths.model20bTflitePath,
                             paths.configPath,
