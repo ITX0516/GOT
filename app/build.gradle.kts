@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val versionMajor = 0
+val versionMinor = 1
+val versionPatch = 0
+val versionNameStr = "$versionMajor.$versionMinor.$versionPatch"
+val versionCodeInt = versionMajor * 10000 + versionMinor * 100 + versionPatch
+
 android {
     namespace = "com.goai"
     compileSdk = 34
@@ -11,8 +17,8 @@ android {
         applicationId = "com.goai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = versionCodeInt
+        versionName = versionNameStr
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -21,15 +27,46 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = System.getenv("SIGNING_STORE_FILE")
+            val storePasswordStr = System.getenv("SIGNING_STORE_PASSWORD")
+            val keyAliasStr = System.getenv("SIGNING_KEY_ALIAS")
+            val keyPasswordStr = System.getenv("SIGNING_KEY_PASSWORD")
+
+            if (storeFilePath != null && storeFilePath.isNotEmpty()) {
+                storeFile = file(storeFilePath)
+                storePassword = storePasswordStr ?: ""
+                keyAlias = keyAliasStr ?: ""
+                keyPassword = keyPasswordStr ?: ""
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
+            }
         }
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+
+    lint {
+        abortOnError = false
+        xmlReport = true
+        htmlReport = true
+        lintConfig = file("lint.xml")
     }
 
     compileOptions {

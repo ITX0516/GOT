@@ -27,13 +27,34 @@ jobs:
           gradle-version: 8.2
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace 2>&1 | tail -300
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log | tail -200
+          echo "=== Build exit code: $? ==="
+
+      - name: Show full build log on failure
+        if: failure()
+        run: cat build.log 2>/dev/null || echo "No build log found"
+
+      - name: Run Lint
+        run: |
+          set -o pipefail
+          gradle lintDebug --no-daemon 2>&1 | tee lint.log | tail -100
+          echo "=== Lint exit code: $? ==="
 
       - name: Find APK files
-        run: find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
+        run: find . -name "*.apk" -type f -exec ls -lh {} \; 2>/dev/null || echo "No APK files found"
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: GOT-debug
+          name: GOT-debug-apk
           path: app/build/outputs/apk/debug/
+          if-no-files-found: warn
+
+      - name: Upload Lint Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/
+          if-no-files-found: ignore
